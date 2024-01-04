@@ -167,7 +167,7 @@ void Display7seg_Task(void* pvParameters) {
 	unsigned i;
 	uint8_t d;
 	while (1) {
-
+		//komentar za tesitiranje
 	}
 }
 
