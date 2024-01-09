@@ -36,7 +36,6 @@ static void checkIdleCountTimerFun(TimerHandle_t tH);
 
 // TRASNMISSION DATA - CONSTANT IN THIS APPLICATION 
 const char trigger[] = "0123456789abcdef";
-char brzina_char[3];
 unsigned volatile t_point;
 
 
@@ -222,7 +221,6 @@ void SerialReceivePC_Task(void* pvParameters) {
 			set_7seg_digit(hexnum[cnt_sens & 0x0F]);	//obrisati
 		}
 		else if (cc == 0xed) {	// za svaki KRAJ poruke
-			_itoa(brzina, brzina_char, 10);
 			xSemaphoreGive(TBE_pomocni_BinarySemaphore, portMAX_DELAY);
 		}
 		else if (r_point < sizeof(vrata_serial)) { // pamti karaktere
