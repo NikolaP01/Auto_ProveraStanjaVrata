@@ -28,7 +28,8 @@
 // TASKS: FORWARD DECLARATIONS 
 void LEDBar_Task(void* pvParameters);				//logicki izlazi
 void Display7seg_Task(void* pvParameters);			//upravljanje displejom
-void SerialSend_Task(void* pvParameters);			//slanje podataka PC-ju
+void SerialSendPC_Task(void* pvParameters);			//slanje podataka PC-ju
+void SerialReceivePC_Task(void* pvParameters);			//slanje podataka PC-ju
 void SerialReceiveDoor_Task(void* pvParameters);	//provera stanja vrata i brzine
 static void checkIdleCountTimerFun(TimerHandle_t tH);
 
@@ -137,7 +138,7 @@ void main_demo(void) {
 	//xTaskCreate(SerialReceivePC_Task, "PCRx", configMINIMAL_STACK_SIZE, NULL, TASK_SERIAl_REC_PRI, NULL);		// SERIAL RECEIVER TASK 
 	xTaskCreate(SerialReceiveDoor_Task, "DoorRx", configMINIMAL_STACK_SIZE, NULL, TASK_SERIAl_REC_PRI, NULL);	// SERIAL RECEIVER TASK 
 	xTaskCreate(LEDBar_Task, "LED", configMINIMAL_STACK_SIZE, NULL, SERVICE_TASK_PRI, NULL);					// CREATE LED BAR TASK
-	//xTaskCreate(Display7seg_Task, "7Seg", configMINIMAL_STACK_SIZE, NULL, SERVICE_TASK_PRI, NULL);					// CREATE LED BAR TASK 
+	xTaskCreate(Display7seg_Task, "7Seg", configMINIMAL_STACK_SIZE, NULL, SERVICE_TASK_PRI, NULL);					// CREATE LED BAR TASK 
 	r_point = 0;
 
 
@@ -172,7 +173,7 @@ void Display7seg_Task(void* pvParameters) {
 		xSemaphoreTake(seg7_BinarySemaphore, portMAX_DELAY);
 		i = 0;
 		while (i < sizeof(vrata_serial)) {
-			select_7seg_digit(6);
+			select_7seg_digit(i);
 			if (vrata_serial[i] == 0x00) set_7seg_digit(hexnum[0]);
 			else set_7seg_digit(hexnum[1]);
 			i++;
@@ -205,40 +206,10 @@ void SerialSendPC_Task(void* pvParameters) {	//slanje poruka PC-ju
 
 void SerialReceivePC_Task(void* pvParameters) {
 	uint8_t cc = 0;
-	static uint8_t cnt_door = 0;	//brojac koliko puta je stigao interrupt za VRATA
-	static uint8_t cnt_sens = 0;	//brojac koliko puta je stigao interrupt za SENZORE
-	static int flag;
 	while (1) {
 		xSemaphoreTake(RXC_BinarySemaphore, portMAX_DELAY);	// ceka na serijski prijemni interapt
 		get_serial_character(COM_CH2, &cc);	//ucitava primljeni karakter u promenjivu cc
 
-		if (cc == 0xfe) {	//stizu podaci za stanje VRATA
-			r_point = 0;
-			cnt_door++;
-			flag = 0;
-			select_7seg_digit(6);						//obrisati
-			set_7seg_digit(hexnum[cnt_door & 0x0F]);	//obrisati
-		}
-		else if (cc == 0xff) {	//stizu podaci za stanje SENZORA
-			r_point = 0;
-			cnt_sens++;
-			flag = 1;
-			select_7seg_digit(5);						//obrisati
-			set_7seg_digit(hexnum[cnt_sens & 0x0F]);	//obrisati
-		}
-		else if (cc == 0xed) {	// za svaki KRAJ poruke
-			xSemaphoreGive(PC_BinarySemaphore, portMAX_DELAY);
-			xSemaphoreGive(seg7_BinarySemaphore, portMAX_DELAY);
-		}
-		else if (r_point < sizeof(vrata_serial)) { // pamti karaktere
-			if (flag == 0) {
-				vrata_serial[r_point++] = cc;
-			}
-			else if (flag == 1) {
-				brzina = cc;
-				flag++;		//zastita u slucaju da se unese vise bajtova pre STOP bajta, pamti se vrednost samo prvog
-			}
-		}
 	}
 }
 
