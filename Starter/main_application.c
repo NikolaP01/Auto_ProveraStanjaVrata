@@ -28,8 +28,7 @@
 // TASKS: FORWARD DECLARATIONS 
 void LEDBar_Task(void* pvParameters);				//logicki izlazi
 void Display7seg_Task(void* pvParameters);			//upravljanje displejom
-void SerialSendPC_Task(void* pvParameters);			//slanje podataka PC-ju
-void SerialReceivePC_Task(void* pvParameters);		//primanje podataka od PC-ja
+void SerialSend_Task(void* pvParameters);			//slanje podataka PC-ju
 void SerialReceiveDoor_Task(void* pvParameters);	//provera stanja vrata i brzine
 static void checkIdleCountTimerFun(TimerHandle_t tH);
 
@@ -54,8 +53,9 @@ static const char hexnum[] = { 0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0
 // GLOBAL OS-HANDLES 
 SemaphoreHandle_t LED_INT_BinarySemaphore;
 SemaphoreHandle_t TBE_BinarySemaphore;
-SemaphoreHandle_t TBE_pomocni_BinarySemaphore;
+SemaphoreHandle_t PC_BinarySemaphore;
 SemaphoreHandle_t RXC_BinarySemaphore;
+SemaphoreHandle_t seg7_BinarySemaphore;
 TimerHandle_t per_TimerHandle;
 TimerHandle_t CPUUsage_TimerHandle;
 uint64_t idleHookCounter;
@@ -122,7 +122,8 @@ void main_demo(void) {
 	LED_INT_BinarySemaphore = xSemaphoreCreateBinary();	// CREATE LED INTERRUPT SEMAPHORE 
 	TBE_BinarySemaphore = xSemaphoreCreateBinary();		// CREATE TBE SEMAPHORE - SERIAL TRANSMIT COMM 
 	RXC_BinarySemaphore = xSemaphoreCreateBinary();		// CREATE RXC SEMAPHORE - SERIAL RECEIVE COMM
-	TBE_pomocni_BinarySemaphore = xSemaphoreCreateBinary();
+	PC_BinarySemaphore = xSemaphoreCreateBinary();
+	seg7_BinarySemaphore = xSemaphoreCreateBinary();
 
 
 	// TIMERS
@@ -168,7 +169,14 @@ void Display7seg_Task(void* pvParameters) {
 	unsigned i;
 	uint8_t d;
 	while (1) {
-		//komentar za tesitiranje
+		xSemaphoreTake(seg7_BinarySemaphore, portMAX_DELAY);
+		i = 0;
+		while (i < sizeof(vrata_serial)) {
+			select_7seg_digit(6);
+			if (vrata_serial[i] == 0x00) set_7seg_digit(hexnum[0]);
+			else set_7seg_digit(hexnum[1]);
+			i++;
+		}
 	}
 }
 
@@ -176,8 +184,6 @@ void SerialSendPC_Task(void* pvParameters) {	//slanje poruka PC-ju
 	static int brzina_int = 0;
 	while (1) {
 		xSemaphoreTake(TBE_pomocni_BinarySemaphore, portMAX_DELAY);
-		brzina_int = (int)brzina;
-
 		t_point = 0;
 		while (t_point < sizeof(vrata_serial)) {
 			send_serial_character(COM_CH2, trigger[vrata_serial[t_point++]]);
@@ -221,7 +227,8 @@ void SerialReceivePC_Task(void* pvParameters) {
 			set_7seg_digit(hexnum[cnt_sens & 0x0F]);	//obrisati
 		}
 		else if (cc == 0xed) {	// za svaki KRAJ poruke
-			xSemaphoreGive(TBE_pomocni_BinarySemaphore, portMAX_DELAY);
+			xSemaphoreGive(PC_BinarySemaphore, portMAX_DELAY);
+			xSemaphoreGive(seg7_BinarySemaphore, portMAX_DELAY);
 		}
 		else if (r_point < sizeof(vrata_serial)) { // pamti karaktere
 			if (flag == 0) {
