@@ -183,7 +183,7 @@ void Display7seg_Task(void* pvParameters) {
 void SerialSendPC_Task(void* pvParameters) {	//slanje poruka PC-ju
 	static int brzina_int = 0;
 	while (1) {
-		xSemaphoreTake(TBE_pomocni_BinarySemaphore, portMAX_DELAY);
+		xSemaphoreTake(PC_BinarySemaphore, portMAX_DELAY);
 		t_point = 0;
 		while (t_point < sizeof(vrata_serial)) {
 			send_serial_character(COM_CH2, trigger[vrata_serial[t_point++]]);
@@ -269,7 +269,7 @@ void SerialReceiveDoor_Task(void* pvParameters) {
 			set_7seg_digit(hexnum[cnt_sens & 0x0F]);	//obrisati
 		}
 		else if (cc == 0xed && byte_flag == 0) {	// za svaki KRAJ poruke
-			xSemaphoreGive(TBE_pomocni_BinarySemaphore, portMAX_DELAY);
+			xSemaphoreGive(PC_BinarySemaphore, portMAX_DELAY);
 		}
 		else if (byte_flag == 1) { // pamti karaktere
 			if (msg_type == 0 && (r_point < sizeof(vrata_serial))) {
