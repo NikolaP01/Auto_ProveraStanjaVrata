@@ -34,7 +34,7 @@ void LEDBar_Task(void* pvParameters);					//logicki izlazi
 void Display7seg_Task(void* pvParameters);				//upravljanje displejom
 void SerialSend_Task(void* pvParameters);				//slanje podataka PC-ju
 void SerialReceive_Task(void* pvParameters);			//slanje podataka PC-ju
-static void checkIdleCountTimerFun(TimerHandle_t tH);
+//static void checkIdleCountTimerFun(TimerHandle_t tH);
 
 
 // TRASNMISSION DATA - CONSTANT IN THIS APPLICATION 
@@ -53,7 +53,8 @@ unsigned volatile r_point;
 static uint8_t vrata_serial[5];
 static uint8_t vrata_LED[5];
 static uint8_t brzina = 0;
-uint8_t full = 0x00;
+static uint8_t full = 0x00;
+static uint8_t alarm_LED = 0x00;
 static int door_open = 0;
 static int alarm_gepek = 1;
 static char PC_msg[R_BUF_SIZE];
@@ -70,7 +71,7 @@ SemaphoreHandle_t PC_BinarySemaphore;
 SemaphoreHandle_t RXC_BinarySemaphore;
 SemaphoreHandle_t seg7_BinarySemaphore;
 TimerHandle_t per_TimerHandle;
-TimerHandle_t CPUUsage_TimerHandle;
+//TimerHandle_t CPUUsage_TimerHandle;
 uint64_t idleHookCounter;
 
 
@@ -104,7 +105,7 @@ static void TimerCallback(TimerHandle_t xTimer)
 		set_LED_BAR(1, full);//sve LEDovke ukljucene
 		full = ~full;
 	}
-	else set_LED_BAR(1, 0x00);//sve LEDovke iskljucene
+	else set_LED_BAR(1, alarm_LED);//sve LEDovke iskljucene
 	
 }
 
@@ -118,7 +119,6 @@ void main_demo(void) {
 	init_serial_downlink(COM_CH1);	// inicijalizacija serijske RX na kanalu 1
 	init_serial_uplink(COM_CH2);	// inicijalizacija serijske TX na kanalu 2
 	init_serial_downlink(COM_CH2);	// inicijalizacija serijske RX na kanalu 2
-	set_LED_BAR(1, 0x00);
 
 
 	// INTERRUPT HANDLERS
@@ -138,12 +138,13 @@ void main_demo(void) {
 	// TIMERS
 	per_TimerHandle = xTimerCreate("Timer", pdMS_TO_TICKS(500), pdTRUE, NULL, TimerCallback);
 	xTimerStart(per_TimerHandle, 0);
-	CPUUsage_TimerHandle = xTimerCreate("TimerCPU", pdMS_TO_TICKS(100), pdTRUE, NULL, checkIdleCountTimerFun);
-	xTimerStart(CPUUsage_TimerHandle, 0);
+	//CPUUsage_TimerHandle = xTimerCreate("TimerCPU", pdMS_TO_TICKS(100), pdTRUE, NULL, checkIdleCountTimerFun);
+	//xTimerStart(CPUUsage_TimerHandle, 0);
+
 
 	// TASKS 
-	xTaskCreate(SerialSend_Task, "PCTx", configMINIMAL_STACK_SIZE, NULL, TASK_SERIAL_SEND_PRI, NULL);			// SERIAL TRANSMITTER TASK
-	xTaskCreate(SerialReceive_Task, "DoorRx", configMINIMAL_STACK_SIZE, NULL, TASK_SERIAl_REC_PRI, NULL);		// SERIAL RECEIVER TASK 
+	xTaskCreate(SerialSend_Task, "Tx", configMINIMAL_STACK_SIZE, NULL, TASK_SERIAL_SEND_PRI, NULL);			// SERIAL TRANSMITTER TASK
+	xTaskCreate(SerialReceive_Task, "Rx", configMINIMAL_STACK_SIZE, NULL, TASK_SERIAl_REC_PRI, NULL);		// SERIAL RECEIVER TASK 
 	xTaskCreate(LEDBar_Task, "LED", configMINIMAL_STACK_SIZE, NULL, SERVICE_TASK_PRI, NULL);					// CREATE LED BAR TASK
 	xTaskCreate(Display7seg_Task, "7Seg", configMINIMAL_STACK_SIZE, NULL, SERVICE_TASK_PRI, NULL);				// CREATE LED BAR TASK 
 	r_point = 0;
@@ -160,20 +161,15 @@ void LEDBar_Task(void* pvParameters) {
 	while (1) {
 		xSemaphoreTake(LED_INT_BinarySemaphore, portMAX_DELAY);
 		get_LED_BAR(0, &d);
-
-		for (unsigned i = 0; i < sizeof(vrata_LED); i++) {
+		for (unsigned int i = 0; i < sizeof(vrata_LED); i++) {
 			vrata_LED[i] = d % 2;
 			d >>= 1;
 		}
-		for (int i = 0; i < sizeof(vrata_LED); i++) {
-			printf("%d\n", vrata_LED[i]);
-		}
-		printf("\n");
 	}
 }
 
 void Display7seg_Task(void* pvParameters) {
-	unsigned i;
+	unsigned int i;
 	uint8_t d;
 	while (1) {
 		xSemaphoreTake(seg7_BinarySemaphore, portMAX_DELAY);
@@ -185,7 +181,7 @@ void Display7seg_Task(void* pvParameters) {
 				set_7seg_digit(hexnum[1]);
 				if (i == (sizeof(vrata_serial) - 1) && door_open == 0)	//ako je otvoren samo gepek
 					door_open = 1;										//dodatno proveriti prekidac
-				else door_open = 2;										//upaliti diode bez provere prekidaca
+				else door_open = 2;										//ako je otvoreno bilo sta da nije gepek upaliti diode bez provere prekidaca
 			}
 			else set_7seg_digit(hexnum[0]);
 			i++;
@@ -194,29 +190,28 @@ void Display7seg_Task(void* pvParameters) {
 }
 
 void SerialSend_Task(void* pvParameters) {	//slanje poruka PC-ju
-	static int brzina_int;
 	static unsigned not_equal;	//flag da 2 niza nisu jednaka
 	while (1) {
 		xSemaphoreTake(PC_BinarySemaphore, portMAX_DELAY);
 		t_point = 0;
 		while (t_point < sizeof(vrata_serial)) {
 			send_serial_character(COM_CH2, trigger[vrata_serial[t_point++]]);
-			xSemaphoreTake(TBE_BinarySemaphore, portMAX_DELAY);// kada se koristi predajni interapt
+			xSemaphoreTake(TBE_BinarySemaphore, portMAX_DELAY);
 		}
 		send_serial_character(COM_CH2, 13);
-		xSemaphoreTake(TBE_BinarySemaphore, portMAX_DELAY);// kada se koristi predajni interapt
+		xSemaphoreTake(TBE_BinarySemaphore, portMAX_DELAY);
 
 		t_point = 0;
-		brzina_int = (int)brzina;
+		unsigned int brzina_int = (int)brzina;
 		while (++t_point < sizeof(brzina_int)) {
 			send_serial_character(COM_CH2, (char)(brzina_int/100) + '0');
 			brzina_int = (brzina_int % 100) * 10;
-			xSemaphoreTake(TBE_BinarySemaphore, portMAX_DELAY);// kada se koristi predajni interapt
+			xSemaphoreTake(TBE_BinarySemaphore, portMAX_DELAY);
 		}
 		send_serial_character(COM_CH2, 13);
-		xSemaphoreTake(TBE_BinarySemaphore, portMAX_DELAY);// kada se koristi predajni interapt
+		xSemaphoreTake(TBE_BinarySemaphore, portMAX_DELAY);
 
-		vTaskDelay(pdMS_TO_TICKS(1000));
+		vTaskDelay(pdMS_TO_TICKS(2000));
 		not_equal = 0;
 		for (int i = 0; i < sizeof(vrata_serial); i++) {
 			if (vrata_serial[i] != vrata_LED[i]) not_equal = 1;
@@ -225,10 +220,10 @@ void SerialSend_Task(void* pvParameters) {	//slanje poruka PC-ju
 			t_point = 0;
 			while (t_point < sizeof(door_msg)) {
 				send_serial_character(COM_CH2, door_msg[t_point++]);
-				xSemaphoreTake(TBE_BinarySemaphore, portMAX_DELAY);// kada se koristi predajni interapt
+				xSemaphoreTake(TBE_BinarySemaphore, portMAX_DELAY);
 			}
 			send_serial_character(COM_CH2, 13);
-			xSemaphoreTake(TBE_BinarySemaphore, portMAX_DELAY);// kada se koristi predajni interapt
+			xSemaphoreTake(TBE_BinarySemaphore, portMAX_DELAY);
 		}
 	}
 }
@@ -238,13 +233,13 @@ void SerialReceive_Task(void* pvParameters) {
 	uint8_t cc1 = 0;
 	uint8_t cc2 = 0;
 	static int msg_src = 0;			//0 - vrata		1 - brzina		2 - PC komanda
-	static int byte_flag = 0;		//oznaka za "sredinu" poruke
-	static int equal = 0;
+	static int byte_flag = 0;		//flag za "sredinu" poruke
+	static int equal = 0;			//flag za jednakost stringova
 	while (1) {
-		xSemaphoreTake(RXC_BinarySemaphore, portMAX_DELAY);	// ceka na serijski prijemni interapt
-		get_serial_character(COM_CH0, &cc0);	//ucitava primljeni karakter u promenjivu cc
-		get_serial_character(COM_CH1, &cc1);	//ucitava primljeni karakter u promenjivu cc
-		get_serial_character(COM_CH2, &cc2);	//ucitava primljeni karakter u promenjivu cc
+		xSemaphoreTake(RXC_BinarySemaphore, portMAX_DELAY);
+		get_serial_character(COM_CH0, &cc0);
+		get_serial_character(COM_CH1, &cc1);
+		get_serial_character(COM_CH2, &cc2);
 
 		if (cc0 == 0xfe && byte_flag == 0) {	//stizu podaci za VRATA sa kanala 0
 			r_point = 0;
@@ -276,38 +271,33 @@ void SerialReceive_Task(void* pvParameters) {
 		else if (byte_flag == 1 && msg_src == 2) {
 			if (r_point < sizeof(PC_msg)) {
 				PC_msg[r_point++] = cc2;
-				if(cc2 == 13) byte_flag = 0;
-				if (r_point == sizeof(PC_msg)) byte_flag = 0;
-				printf("%c\n",cc2);
+				if (cc2 == 10 || cc2 == 13) {	//13 - CR	10 - NOVI RED
+					byte_flag = 0;
+					equal = 1;
+					for (int i = 0; i < r_point - 1; i++) {
+						if (PC_msg[i] != alarm_msg[i]) equal = 0;
+					}
+					if (equal == 1) {
+						if (alarm_gepek == 0) {
+							alarm_gepek = 1;
+							alarm_LED = 0x01;
+						}
+						else {
+							alarm_gepek = 0;
+							alarm_LED = 0x00;
+						}
+					}
+				}
 			}
 		}
 
-		else if (cc0 == 0xed && byte_flag == 0) {	// za svaki KRAJ poruke
+		else if (cc0 == 0xed && byte_flag == 0 && msg_src == 0) {	// za svaki KRAJ poruke sa kanala 0
 			xSemaphoreGive(PC_BinarySemaphore, portMAX_DELAY);
 			xSemaphoreGive(seg7_BinarySemaphore, portMAX_DELAY);
-			printf("kanal 0 - kraj\n");
 		}
-		else if (cc1 == 0xed && byte_flag == 0) {	// za svaki KRAJ poruke
+		else if (cc1 == 0xed && byte_flag == 0 && msg_src == 1) {	// za svaki KRAJ poruke sa kanala 1
 			xSemaphoreGive(PC_BinarySemaphore, portMAX_DELAY);
 			xSemaphoreGive(seg7_BinarySemaphore, portMAX_DELAY);
-			printf("kanal 1 - kraj\n");
-		}
-		else if (byte_flag == 0) {	// za svaki KRAJ poruke
-			equal = 1;
-			for (int i = 0; i < sizeof(alarm_msg) - 1; i++) {
-				if (PC_msg[i] != alarm_msg[i]) equal = 0;
-			}
-			if (equal == 1) {
-				if (alarm_gepek == 0) {
-					alarm_gepek = 1;
-					set_LED_BAR(1, 0x01);
-				}
-				else {
-					alarm_gepek = 0;
-					set_LED_BAR(1, 0x00);
-				}
-			}
-			printf("isti string\n");
 		}
 	}
 }
@@ -316,7 +306,7 @@ void vApplicationIdleHook(void) {
 	idleHookCounter++;
 }
 
-static void checkIdleCountTimerFun(TimerHandle_t tH) {
+/*static void checkIdleCountTimerFun(TimerHandle_t tH) {
 	static uint8_t avg_counter = 0;
 	static uint64_t cnt_sum = 0;
 	cnt_sum += idleHookCounter;
@@ -332,15 +322,7 @@ static void checkIdleCountTimerFun(TimerHandle_t tH) {
 		}
 		int procenat = (int)((float)odnos * 100);
 
-		//printf("Zauzetost procesora u je: %d\n", 100 - procenat);
-		/*for (int i = 0; i < 5; i++) {
-			printf("%d", vrata_serial[i]);
-		}
-		printf("\n");*/
-		for (int i = 0; i < sizeof(PC_msg); i++) {
-			printf("%c", PC_msg[i]);
-		}
 		cnt_sum = 0;
 		avg_counter = 0;
 	}
-}
+}*/
