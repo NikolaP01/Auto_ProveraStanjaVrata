@@ -150,6 +150,7 @@
     <ClInclude Include="FreeRTOS\portable\MSVC\simcom.h" />
     <ClInclude Include="BlackBox.h" />
     <ClInclude Include="HW_access.h" />
+    <ClInclude Include="main.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="FreeRTOS\croutine.c" />
